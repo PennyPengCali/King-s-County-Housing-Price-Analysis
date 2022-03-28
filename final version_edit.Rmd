@@ -1,0 +1,313 @@
+---
+title: 'Factors That Affect House Prices'
+author: "Group 1: Xiaoqing(Doris) Dong, Shuang Peng，Ruiyuan Luan，Jingdan Liu"
+
+date: "11/24/2021"
+output:
+  html_document: default
+  header-includes: \usepackage{color}
+fontsize: 12pt
+margin: 1in
+---
+### Abstract 
+Housing Price has been a top topic in our daily life, with the hypothesis that square footage of living affects housing price postively, we investigated the dataset which contains information of the housing price of ... households and the other variables might influence housing price as well, such as number of bathrooms & bedrooms, building construction and design, house’s renovation status and the house space below ground level. When we were doing our project, we applied the techniques that we learned in class. For instance, single and multiple linear regression analysis, hypothesis test, non-linear analysis which includes polynomials, logarithm and interaction terms. We found that housing price has positive effect on housing price in King County, which was as expected. But the causal effect of it also depends on other variables as well.
+
+```{r setup, echo=FALSE, message=F, warning=F}
+# Clear the working space
+rm(list = ls())
+
+### Load the packages (all must have been installed)
+    library(wooldridge)
+    library(doBy)
+    library(dplyr)
+    library(foreign)
+    library(ggplot2)
+    library(knitr)
+    library(lmtest)
+    library(readstata13)
+    library(sandwich)
+    library(stargazer)
+    library(gdata)
+    library(openintro)
+    library(tidyr)
+    library(corrplot)
+    library(car)
+    library(ggplot2)
+    
+cse=function(reg) {
+    rob=sqrt(diag(vcovHC(reg, type="HC1")))
+    return(rob)
+    }
+```
+### 1. Introduction
+#### 1.1 Project Introduction
++ In this Project, We investigate what is the causal effect of square footage of the living space on housing price by focusing attention on the sample which contains 21,613 house sale prices collected from King County. Housing price is the outcome which we set as dependent variable, Square footage of Living Space is the variable of interest. In our analysis, We also include some variables of control to avoid the omitted variable bias, such as, number of bedrooms, number of bathrooms, grade index, square footage of basement and year of last renovation, respectively. First of all, We perform descriptive statistic analysis, By eyeballing the descriptive statistics, such as statistic table, histogram and scatterplot, We get general understanding of our dataset and do some basic data processing such as moving out the outliers, getting dummmies for some variables and so on. Then we build several regression models to find out the baseline, In this process, We add variables of control into our regression model due to different assumptions, Last but not least, We also perform alternative regression analysis to improve our regression model and make our result more accurate by adding several interaction terms.
+
+```{r data, echo=FALSE, message=F, warning=FALSE, comment=""}
+# Data section: read data
+house=read.csv("housedata.csv", header=T, sep=',') 
+```
+#### 1.2 Data Introduction
+It is necessary to make sure all the variables are understood rightly before we start perfoming our analysis:
+
++ price: house sales price in US dollars
++ sqft living: square footage of the apartments interior living space
++ bedrooms: number of bedrooms
++ bathrooms: number of bathrooms, where .5 accounts for a room with a toilet but no shower
++ grade: an index from 1 to 13, where 1-3 falls short of building construction and design, 7 has an average level of construction and design, and 11-13 have a high quality level of construction and design
++ yr_renovated: the year of the house’s last renovation
++ sqft_basement: the square footage of the interior housing space that is below ground level
+
+
+#### 1.3 How we solve the problem
+
++ Clean the data,exclude the outliers to make the model unbias.<br>
++ Choose the main variable and control variables.<br>
++ Chose part of variabes and change them to dummy.<br>
++ Use simple regression and multiple regression to answer the question.<br>
++ Polynomials,Logarithm functions and Interaction between two varibles have been used.<br> 
+
+
+### 2. Descriptive Statistics
+#### 2.1 statistic table
+```{r star, echo=FALSE, message=F, warning=FALSE, comment=""}
+#create a descriptive table
+
+
+house_new = subset(house, sqftliving< 5000)
+house_new = subset(house_new, bedrooms < 11)
+house_new = subset(house_new, bedrooms > 0)
+house_new = subset(house_new, bathrooms > 0)
+
+stargazer(house_new[c("price","sqftliving","bedrooms","bathrooms","grade")], type="text", digits=2,
+          summary.stat=c("n", "mean", "median", "sd", "max", "min"), 
+          title="Table 1.Descriptive Statistics", flip=FALSE,
+          covariate.labels=c("Housing Price", "Square Footage of Living"))
+```
+
++ As is shown in the Table1, Our sample contains 21613 housing prices in King County. Note that the mean values of most of variables, which includes housing price, square footage of living space, number of bedrooms, and grade index, are higher than their medians, indicating that the distributions of these variables are positively skewed (right-skewed). For number of bathrooms, its mean value is a bit lower than the median, so the variable may be negatively skewed(left-skewed).Eyeballing the standard deviation, There is significant variation in all variables. To be more specific, Housing price has the highest standard deviation and number of bathrooms has the lowest standard deviation among the five. It seems that the distributions of housing price and square footage of living are highly spread  out.
+
+#### 2.2 statistic histogram
+```{r histo, echo=FALSE, message=F, warning=FALSE, comment=""}
+# Create a histogram of housing prices 
+ggplot(house, aes(x=price)) + geom_histogram(color="darkblue", fill= "lightblue",  binwidth = 100000) + 
+labs(title = "Plot 1. Housing prices")
+```
+
++ Histogram is useful to show frequency distribution, Eyeballing the histogram graph for Housing prices above, it shows that the distribution of housing price is indeed a right-skewed distribution because there is a long tail on the right side, Which means the mean value of housing price is larger than the median value, Which is the same result as we find from the statistic table. In the meantime, there seems to be some outliers on the right side.
+
+#### 2.3 statistic scatterplot
+
+```{r scatterplot, echo=FALSE, warning=FALSE, comment="" }
+#create a scatterplot of housing price of square footage of living
+ggplot(house, aes(x=sqftliving, y=price, color = price)) + geom_point() + labs(title ="Plot 2. Housing price and Square Footage of living", x = "Square Footage of Living(ft^2)", y = "Housing Price($)") + stat_smooth(method = "lm", col = "black", se=FALSE) + scale_color_gradient(low = "#67c9ff", high = "#f2bbfc")
+
+```
+
++ As shown in the scatterplot, There is a positive relation of square footage of living on housing price, Even though there are some very large outliers, It is unlikely to affect the results in a significant way.But there we also need to move out the outliers in order to make our analysis more accurate. We choose those square footage of living space lower than 5000(ft^2). 
+
+```{r desc,echo=FALSE, message=F, warning=FALSE, comment=""}
+#Move out the outliers
+
+
+#create another scatterplot of housing price on square footage of living after we move out the outliers.
+ggplot(house_new, aes(x=sqftliving, y=price, color = price)) + geom_point() + labs(title ="Plot3. House Price Vs. Square Footage of the Living Space", x = "Square Footage of Living(ft^2)", y = "Housing Price($)") + stat_smooth(method = "lm", col = "black", se=FALSE) + scale_color_gradient(low = "#67c9ff", high = "#f2bbfc")
+```
+
++ As we can see from the scatterplot above, There is alos a positive relation between these two variables. That is to say, larger living space, higher housing prices. But there seems to be long tail in housing price.
+
+### 3. Baseline Regression Analysis
++ As the result shown in the second scatterplot, There is a long tail in housing price, which shows that there is more variation in housing price than in our variable of control, Which is square footage of living. Therefore, We take the logarithm of the housing price as our dependent variable. After this, the scale of the dependent variable will be compressed, the data will be more stable, and the collinearity and heteroscedasticity of the model will also be weakened. In the meantime, Logarithmic transform permits modelling relations in “percentage” terms (like elasticities), rather than linear, It will be easier to interprete the result since an increase in square footage of living by 1 unit is asscociated with (100*ß1)% change in housing price.
+
++ Whatsmore, in order to make the estimated coefficient more readable, we divided sqftliving by 100.
+
+```{r reg_1, echo=FALSE, message=F, warning=FALSE, comment=""}
+#create dummy variable for yrrenovated and sqftbasement
+house_new$yrrenovated=ifelse(house_new$yrrenovated>0, 1, 0)
+house_new$sqftbasement =ifelse(house_new$sqftbasement>0, 1, 0)
+
+house_new$sqftliving = (house_new$sqftliving/100)
+
+# Simple linear regression
+reg1 =lm(log(price) ~ sqftliving, data=house_new)
+
+reg2 = lm(log(price) ~ sqftliving + bedrooms, data=house_new)
+
+reg3 = lm(log(price) ~ sqftliving + bedrooms + bathrooms, data=house_new)
+
+reg4 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade, data=house_new)
+
+reg5 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated, data=house_new)
+
+reg6 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement, data=house_new)
+
+reg7 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement + I(bedrooms^2), data=house_new)
+
+reg8 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement + I(bedrooms^2) + I(bedrooms^3), data=house_new)
+
+stargazer(reg1,reg2,reg3,reg4, reg5,reg6, reg7, reg8,se=list(cse(reg1), cse(reg2),cse(reg3),cse(reg4),cse(reg5),cse(reg6),cse(reg7),cse(reg8)),
+        title="Table 2. Revenue Growth and Market Capitalization", type="text", 
+        star.cutoffs=NA, df=FALSE, digits=3)
+```
+#### 3.1 Baseline Selection
++ When we regress price on sqftliving,i.e Regr 1, it suggests a positive relationship between price and sqftliving. Noticed that the coefficient is statistically significant at conventional level and sqftliving explains 45.3% of the variation in price.
+
++ Then, we add variables in turn to explore the relationship between potential variables and housing prices deeper. The coefficient of interest is sqftliving, and the control variables are number of bedrooms, number of bathrooms, grade, and two dummy variables, year_renovated and sqftbasement. 
+
++ Compared Regr 1 and Regr 2, the coefficient of interest increases slightly, from 0.041 to 0.045, indicating that Regr 1 with only sqftliving suffers from downward bias. The bias is mitigated when we include bedrooms in Regr 2. It is likely that price and number of bedrooms are positively related, i.e. increasing the number of bedroom by 1 will increase price by 4.5%, everything else held constant. Adjusted R2 of Regr 2 is 0.46, shows that sqftliving and bedrooms explain 46% of the variation in price.
+
++ Compared Regr 2 and Regr 3, the coefficient of interest is upward biased when omitting the variable bathrooms. The bias is mitigated when we include bathrooms in Regr 3. It is likely that price and number of bathrooms are positively related, i.e. increasing the number of bathrooms by 1 will increase price by 4.2%, everything else held constant. Adjusted R2 increases slightly from 0.46 to 0.462, indicates that three variables explain 46.2% of the variation in price.
+
++ Compared Regr 3 and Regr 4, the coefficient of interest declines rapidly, from 0.042 to 0.025. This indicates that Regr 3 suffers from downward bias. The bias is mitigated when we include grade in Regr 4. It is likely that price and grade are positively related, i.e. houses with higher level of construction and design tend to have higher prices. Everything else held constant, the level of construction and design of houses increases by 1 unit, house prices increases by 2.5%. However, Adjusted R2 shows a relatively large increase, indicating that four variables in Regr 4 explain 52.8% of the variation in price.
+
++ Compared Regr 4 and Regr 5, the coefficient of interest remains same when adding in the dummy variable yrrenovated. However, adjusted R2 increases from 0.528 to 0.536. Everything else held constant, houses which have renovated are 2.5% more expensive than the ones who don't have renovated. Five variables in Regr 5 explain 53.6% of the variation in price.
+
++ Compared Regr 5 and Regr 6, the coefficient of interest is upward biased when omitting the variable sqftbasement. The bias is mitigated when we include sqftbasement in Regr 6. It is likely that price and sqftbasement are positively related, i.e. houses which have basement tend to have higher prices. Everything else held constant, houses which have basement are 2.2% more expensive than the ones who don't have.Six variables in Regr 6 explain 55% of the variation in price.
+
++ From Regr 4 to Regr 6, it suggests that the estimated coefficient of variable is beginning to level off, around the value 0.022, which is a positive sign that we may find the positive correlation between log(price) and sqftliving. Note that everything so far has been linear in our variable of interest and eyeballing the plot 2 once again, we find that the effect on price of a change in sqftliving depends on the value of sqftliving, to be specific, the marginal effect of sqftliving is not constant, then we try to fit curvature by adding quadratic term and cubic term.
+
++ However, to determine whether the quadratic specification or the cubic specification is preferred to the linear regression, we can use F-tests, which is shown below, to test the results.
+
+All in all, comparing the coefficients between each columns, all the coefficients are positive. The table suggests that there is a positive relationship between price and square footage of living. As we adding more variables in our regression, we can see the coefficient for square footage of living start changing which means the square footage of living suffer from omitted variable bias. The omitted variables can affect the price and can correlate with square footage of living. After we adding bedrooms, bathrooms, grade, year of renovated, and square footage of basement, the coefficient of square footage of living change a lot between regression 1 to regression 4, remaining more stable from regression 4 to regression 8. 
+
+
+
+**Method 1 for F-test--Run Three F-test**
+
+To decided whether the linear regression is better than quadratic or cubic specification in number of bedrooms, we use regression 7 and 8 to do the F-test. The results shows below:
+
+```{r F_stats1, echo=FALSE, message=F, warning=FALSE, comment=""}
+### F stats for comparing cubic specification and quadratic specification
+lht(reg7, c("I(bedrooms^2) = 0"), white.adjust="hc1")
+```
+First, we run F-test on regression 7 for $\beta_{bedroom^2}$ = 0. From the result we can get F-statistic is 9.3531, so the hypothesis of quadratic specification is reject against the polynomial of degree up to 2 alternative at 0.1% significance level. Thus, $\beta_{bedroom^2}$ not equal 0, quadratic specification is better than linear specification. 
+
+```{r F_stats2, echo=FALSE, message=F, warning=FALSE, comment=""}
+### F stats for comparing quadratic specification and linear regression
+lht(reg8, c("I(bedrooms^2) = 0","I(bedrooms^3)=0"), white.adjust="hc1")
+```
+
+Second, we run F-test on regression 8 for $\beta_{bedroom^2}$ = 0 and $\beta_{bedroom^3}$ = 0. The result shows the F-statistic is 91.464 means the regression is linear is rejected at 1% significance level against the alternative that it is a polynomial of degree up to 3. To determine cubic specification is better than linear specification we need extra F-test for $\beta_{bedroom^3}$ = 0 on regression 8. The result is below:
+
+```{r F_stats3, echo=FALSE, message=F, warning=FALSE, comment=""}
+
+### F stats for comparing cubic specification and linear regression
+lht(reg8, c("I(bedrooms^3)=0"), white.adjust="hc1")
+```
+The result shows F-statistic = 54.284, means the hypothesis of quadratic specification is reject against the polynomial of degree up to 3 alternative at 0.1% significance level.Thus, estimated coefficient on $bedroom^3$ is not zero. Overall, since  $bedroom^3$ and  $bedroom^2$ are not equal to zero we choose regression 8 as our baseline. 
+
+
+
+**Method 2- Run t-test on $bedroom^2$ and $bedroom^3$ then run F-test on regression 8**
+
+To decided whether the linear regression is better than quadratic or cubic specification in number of bedrooms, we need to run t-test on regression 7 and 8 then using F-test on regression 8 to check our result.
+
+For regression 7, $|t_{bedroom^2}|$ = `r round(0.002/0.001, digits = 3)` > 1.96, it's statistical significant at 5% significant level so the hypothesis of linearity is reject against the quadratic alternative at the 5% significant level. 
+
+For regression 8, $|t_{bedroom^3}|$ = `r round(0.0005/0.0001, digits = 3)` > 1.96 it's statistical significant at 5% significant level so the hypothesis of linearity is reject against the polynomial of degree up to 3 alternative at the 5% significant level. 
+
+The hypothesis for F-test on regression 8 is  $bedroom^3$ = 0 and $bedroom^2$ = 0. F-statistic is 91.464 means the regression is linear is rejected at 1% significance level against the alternative that it is a polynomial of degree up to 3.
+
+Overall, from F-test we know $bedroom^3$ and $bedroom^2$ at least one of them is not zero. From  two t-test we can get $bedroom^3$ is not zero and $bedroom^2$ is not zero. Thus we choose regression 8 as our baseline.
+
+Before we interpreted each coefficient, we run the t-test first to make sure all the coefficients are statistical significant. 
+
+ $|t|_{sqftliving}$ = `r round(0.022/0.001, digits = 3)`;
+ $|t|_{bedrooms}$ = `r round(0.153/0.016, digits = 3)`;
+ $|t|_{bathrooms}$ = `r round(0.021/0.005, digits = 3)`;
+ $|t|_{grade}$ = `r round(0.201/0.003, digits = 3)`;
+ $|t|_{yyrenovated}$ = `r round(0.214/0.012, digits = 3)`;
+ $|t|_{saftbasemnet}$ = `r round(0.128/0.005, digits = 3)`.
+ All the coefficient are statistical significant at 5% significance level.
+
+#### 3.2 Interpret Regression Function
+
+$\hat{log(price)}$ = $0.022 * sqftliving - 0.153*bedrooms-0.021*bathrooms+0.201*grade+0.214*yrrenovated+0.128*sqftbasment+0.02*bedrooms^2-0.0005*bedroom^3+11.316$
+
+According to above the baseline regression, everything else equal: 
+
+* Increase 100 $ft^2$ of living, on average, will increase the price by 2.2%
+* Increase 1 bathroom in house will, on average,  decrease the price by 2.1%
+* Increase 1 grade of house, on average, will increase the price by 20.1%
+* A house which was renovated, on average, price is 21.4% higher than the house weas not renovated.
+* A house which has basement, on average, price is 12.8% higher than the house does not have basement.
+* If we compare two houses, one with 3 bedrooms and another with 4 bedrooms, one more bedrooms in house the price on average is 
+$-0.153*(4-3)+0.02*(4^2-3^2)-0.0005*(4^3 - 3^3) =$ `r (-0.153*(4-3)+0.02*(4^2-3^2)-0.0005*(4^3 - 3^3))*100`%  less. 
+
+For our regression interpret the intercept is meaningless because the house should have living space otherwise it just a land. 
+
+Overall, all the estimates are statistically significant and economically significant. Square footage of living, number of bedrooms, number of bathrooms, house grade, year of renovated and square footage of basement explain 55.2%($R^2$) of the variation in log price. 
+
+
+### 4. Alternative Regression Specification 
+
+```{r reg_2, echo=FALSE, message=F, warning=FALSE, comment=""}
+
+reg9 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement + I(bedrooms^2) + I(bedrooms^3) + I(sqftliving*bedrooms) + I((bedrooms^2)*sqftliving) + I((bedrooms^3)*sqftliving), data=house_new)
+
+reg10 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement + I(bedrooms^2) + I(bedrooms^3)+ I(sqftliving*sqftbasement) ,data=house_new)
+
+reg11 = lm(log(price) ~ sqftliving + bedrooms + bathrooms + grade + yrrenovated + sqftbasement + I(bedrooms^2) +I(bedrooms^3) +I(sqftliving*sqftbasement)+ I(sqftliving*grade) , data=house_new)
+
+stargazer(reg8,reg9, reg10, reg11,se=list(cse(reg8),cse(reg9),cse(reg10),cse(reg11)), 
+        title="Table 3. Revenue Growth and Market Capitalization", type="text", 
+        star.cutoffs=NA, df=FALSE, digits=3)
+```
+
+#### 4.1 Alternative Regression analysis
+As you can see from the table 3, reg(1) is the baseline regression model, Reg(2), reg(3) and reg(4) are the models that added with interaction terms to investigate whether there are relationships among these variables.<br>
+
+##### 4.1.1 Alternative Regression analysis - interaction terms of sqftliving and bedrooms
+In reg(2), we add three interaction terms to investigate whether there is a relation between square foot of living and bedrooms because it seems that when there are more bedrooms in the house, there is more space for people to live.
+
++ After we add these three interaction terms into our analysis, the coefficients of these variables keep stable except bedroom, which is as expected, the asjusted R^2 and St.Error remain the same.<br> 
+
++ **Run t-test on interaction terms: $sqftliving * bedrooms$, $bedrooms2 * sqftliving$, $bedrooms3 * sqftliving$**, For sqftliving * bedrooms, $|t_{sqftliving * bedrooms}|$ = `r round(0.001/0.004, digits = 3)` < 1.96, it's NOT statistical significant at 5% significant level. For bedrooms2 * sqftliving, $|t_{bedrooms2 * sqftliving}|$ = `r round(0.0001/0.001, digits = 3)` < 1.96;it's also NOT statistical significant at 5% significant level. For bedrooms3 * sqftliving, $|t_{bedrooms3 * sqftliving}|$ = `r round(0.00002/0.001, digits = 3)` < 1.96, it's NOT statistical significant at 5% significant level in this two regression. Since the coefficients of these three interaction terms are not statistical significant, so we decide to remove them in the model and investigate other interactions.
+
+##### 4.1.2 Alternative Regression analysis - interaction terms of sqftliving and sqftbasement
+In reg(3), we add an interaction term to investigate the relation between square foot of living and basement because of the assumption that maybe if there is a basement in the house, the house is bigger and thus has more space for living.<br>
+
++ As you can see from the table above, the coefficients of these variables keep stable except sqftbasement, the asjusted R^2 and St.Error remain the same.
+
++ **Run t-test on interaction term: $sqftliving * sqftbasement$**, For sqftliving * sqftbasement, $|t_{sqftliving * sqftbasement}|$ = `r round(0.002/0.001, digits = 3)` > 1.96, it's statistical significant at 5% significant level. It indicates that an increase of 100 sqftliving is associated with (8.4+ 0.2*sqftbasement)% increase in housing price, Thus, we decide to add this interaction term into our model and continue investigating other interactions.
+
+##### 4.1.3 Alternative Regression analysis - interaction terms of sqftliving and sqftbasement
+In reg(4), we add and interaction term to investigate the relation between square foot of living and grade, It might be possible that if the house has more space for living, the grade of the house is larger. As we can see from the result, like the other two regressions before, the coefficients keep stable, the asjusted R^2 and St.Error remain the same.
+
++ **Run t-test on interaction term: $sqftliving * grade$ **, For sqftliving * grade, $|t_{sqftliving * grade}|$ = `r round(0.0005/0.0002, digits = 3)` > 1.96, it's  statistical significant at 5% significant level.Besides, the coefficient of the interaction term $sqftliving * sqftbasement$ remain the same and is still statistical significant. It indicates that an increase of 100 sqftliving is associated with (21.3+ 0.2*sqftbasement-0.05*grade)% increase in housing price.
+
+Comparing the results of the other two regression analysis, It seems like the last regression is better to interpret the relations between housing price and the variables in the regression model.
+
+### 5. Conclusion
++ After Baseline Regression Analysis and Alternative Regression Analysis, We have found a model to interpret the causal effects of square foot of living on housing price, the model is as follows:
+
+$\hat{log(price)}$ = $0.025 * sqftliving-0.154*bedrooms-0.022*bathrooms+0.213*grade+0.211*yrrenovated+0.084*sqftbasment$+$0.020*bedrooms^2-0.0005*bedroom^3+ 0.002*(sqftliving*sqftbasement)-0.0005*(sqftliving*grade)+11.247$
+
++ As shown in the model,If we keep everything else constants and on average situations, An increase of 100 square foot of living is associated with (2.5 + 0.2*sqftbasement - 0.05*grade)% increase in housing price. Increase the number of bedrooms from 4 to 3 will increase housing price by `r (-0.154*(4-3)+0.02*(4^2-3^2)-0.0005*(4^3 - 3^3))*100`%. It's meet expectation that the number of bathroom has negative effect on housing price. The influence of grade on housing price depends on square foot of living, that is, an increase of 1 grade is associated with (21.3 - 0.05*sqftliving)% increase in housing price.A house which was renovated is 21.1% more expensive than the house was not renovated.The price gap between house has basement and house without basement is increasing in the sqftliving because 
+$log(price)_{basement =1}-log(price)_{basement =0}=0.084+0.002*sqftliving$
+
+
+### 6. Limitation
+In this project, We have performed well-organized analysis to figure out the causal effect of square foot of living on housing price, but we have to admit that there are some limitations exist for us to explore in the future.
+
++ We have got the information of latitude and longitude, In future analysis, we can take location into consideration and figure out whether there is a difference of the causal effect of sqftliving on housing price among different area.
+
++ The sample was taken from King County, It's possible that there are threats to external validity, so samples from other area also need to be taken into consideration.
+
++ As we all know, housing price could also be influenced by other aspects, such as whether the commute is convenient or not, whether there are good schools nearby or not and how is the public security around. So maybe we can find out more information about those and merge into our dataset ti ==o eliminate the omitted variable bias. 
+
+
+
+### 7. Update after presenatation
+After presentation, we get suggestions to help us improve the report:
+
++ Remove the outliers in variable bedrooms and bathrooms. We remove bedrooms=33 (it seems like do not make sense) and bathrooms=0. After the operation, the model we choose have little change
+
+As shown in the table, The first two are the orignial models, the last two are the models after we eliminate measurement errors, It is clearly that the coefficients of these variables keep stable and are still statistical significant, So It seems that measurement error doesn't influence the performance of our regression model.
+
+
+
+
+
+
+
